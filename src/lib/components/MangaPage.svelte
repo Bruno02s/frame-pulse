@@ -9,9 +9,15 @@
 	export let page: Page | null = null;
 	export let label: string;
 	export let position: 'left' | 'center' | 'right';
-export let register: (el: HTMLElement | null) => void = () => {};
+	export let register: (el: HTMLElement | null) => void = () => {};
 	export let isAnimating: boolean = false;
 	export let pinnedFrameIndexes: number[] = [];
+	// Props para mostrar apenas frames restantes na box da direita
+	export let remainingFrameIndexes: number[] = [];
+	export let showOnlyRemainingFrames: boolean = false;
+	// Props para mostrar apenas frames lidos na box da esquerda
+	export let readFrameIndexes: number[] = [];
+	export let showOnlyReadFrames: boolean = false;
 
 	// Classes locais baseadas na posição (usamos classes próprias para evitar conflito com Tailwind)
 	const positionClasses = {
@@ -317,15 +323,22 @@ async function handleAutoCenter() {
 									{/if}
 								</div>
 							{:else}
-								<!-- Páginas laterais (left/right): mostrar TODOS os frames empilhados SEM animações -->
+								<!-- Páginas laterais (left/right): mostrar frames empilhados SEM animações -->
 								<div class="img-wrapper" bind:this={wrapperEl}>
 									{#if page.frames && page.frames.length}
-										<!-- Renderizar todos os frames da página empilhados -->
-										{#each page.frames as frame, fi (frame.id)}
+										<!-- Determina quais frames mostrar: apenas restantes, apenas lidos, ou todos -->
+										{@const pageFrames = page.frames}
+										{@const framesToShow = showOnlyRemainingFrames 
+											? remainingFrameIndexes.map(idx => ({ frame: pageFrames[idx], idx })).filter(f => f.frame)
+											: showOnlyReadFrames
+												? readFrameIndexes.map(idx => ({ frame: pageFrames[idx], idx })).filter(f => f.frame)
+												: pageFrames.map((frame, idx) => ({ frame, idx }))}
+										<!-- Renderizar frames da página empilhados -->
+										{#each framesToShow as { frame, idx } (frame.id)}
 											{#if frame?.imagePosition?.size}
 												<div 
 													class="frame-position-container" 
-													style={`position:absolute; inset:0; z-index:${200 + fi}; pointer-events:none;`}
+													style={`position:absolute; inset:0; z-index:${200 + idx}; pointer-events:none;`}
 												>
 													<div 
 														class="frame-box"
@@ -359,7 +372,7 @@ async function handleAutoCenter() {
 													src={frame.imageUrl} 
 													alt="Página {page.id} frame {frame.id}" 
 													class="manga-img" 
-													style={`position:absolute; inset:0; width:100%; height:100%; object-fit:contain; z-index:${200 + fi};`} 
+													style={`position:absolute; inset:0; width:100%; height:100%; object-fit:contain; z-index:${200 + idx};`} 
 												/>
 											{/if}
 										{/each}
@@ -441,7 +454,11 @@ async function handleAutoCenter() {
 	}
 
 	/* Aplicar opacidade só quando não está em transição */
-	.left .page-container .img-wrapper,
+	.left .page-container .img-wrapper {
+		opacity: 1;
+		transition: opacity 0.3s ease;
+	}
+	
 	.right .page-container .img-wrapper {
 		opacity: 0.07;
 		transition: opacity 0.3s ease;
@@ -494,11 +511,13 @@ async function handleAutoCenter() {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		overflow: visible;
+		overflow: hidden;
 		position: relative;
 		/* Borda cinza por padrão */
 		border: 1px solid #999999;
 		box-shadow: none;
+		/* Clip para garantir que animações não escapem */
+		clip-path: inset(0);
 	}
 
 	.empty-page {
@@ -522,19 +541,21 @@ async function handleAutoCenter() {
 	.img-wrapper {
 		width: 100%;
 		height: 100%;
-		position: relative;
+		position: absolute;
+		top: 0;
+		left: 0;
 		z-index: 200;
 		will-change: transform;
 		backface-visibility: hidden;
 	}
 
 	/* Classes locais de posição para controlar escala sem depender do Tailwind */
-	.pos-left { opacity: 0.5; transform: scale(0.9); }
+	.pos-left { opacity: 1; transform: scale(1); }
 	.pos-center { opacity: 1; transform: scale(1); z-index: 10; }
 	.pos-right { opacity: 0.5; transform: scale(0.9); }
 
 	/* Versões sem scale para usar durante animação */
-	.pos-left-noscale { opacity: 0.5; transform: none; }
+	.pos-left-noscale { opacity: 1; transform: none; }
 	.pos-center-noscale { opacity: 1; transform: none; z-index: 10; }
 	.pos-right-noscale { opacity: 0.5; transform: none; }
 
@@ -691,10 +712,79 @@ async function handleAutoCenter() {
 		}
 	}
 
+	@keyframes shake {
+		0%, 100% {
+			transform: translateX(0) translateY(0);
+		}
+		5% {
+			transform: translateX(calc(-4px * var(--anim-intensity, 0.5))) translateY(calc(3px * var(--anim-intensity, 0.5)));
+		}
+		10% {
+			transform: translateX(calc(3px * var(--anim-intensity, 0.5))) translateY(calc(-4px * var(--anim-intensity, 0.5)));
+		}
+		15% {
+			transform: translateX(calc(-2px * var(--anim-intensity, 0.5))) translateY(calc(-3px * var(--anim-intensity, 0.5)));
+		}
+		20% {
+			transform: translateX(calc(4px * var(--anim-intensity, 0.5))) translateY(calc(2px * var(--anim-intensity, 0.5)));
+		}
+		25% {
+			transform: translateX(calc(-3px * var(--anim-intensity, 0.5))) translateY(calc(4px * var(--anim-intensity, 0.5)));
+		}
+		30% {
+			transform: translateX(calc(2px * var(--anim-intensity, 0.5))) translateY(calc(-2px * var(--anim-intensity, 0.5)));
+		}
+		35% {
+			transform: translateX(calc(-4px * var(--anim-intensity, 0.5))) translateY(calc(-3px * var(--anim-intensity, 0.5)));
+		}
+		40% {
+			transform: translateX(calc(3px * var(--anim-intensity, 0.5))) translateY(calc(3px * var(--anim-intensity, 0.5)));
+		}
+		45% {
+			transform: translateX(calc(-2px * var(--anim-intensity, 0.5))) translateY(calc(4px * var(--anim-intensity, 0.5)));
+		}
+		50% {
+			transform: translateX(calc(4px * var(--anim-intensity, 0.5))) translateY(calc(-2px * var(--anim-intensity, 0.5)));
+		}
+		55% {
+			transform: translateX(calc(-3px * var(--anim-intensity, 0.5))) translateY(calc(-4px * var(--anim-intensity, 0.5)));
+		}
+		60% {
+			transform: translateX(calc(2px * var(--anim-intensity, 0.5))) translateY(calc(3px * var(--anim-intensity, 0.5)));
+		}
+		65% {
+			transform: translateX(calc(-4px * var(--anim-intensity, 0.5))) translateY(calc(2px * var(--anim-intensity, 0.5)));
+		}
+		70% {
+			transform: translateX(calc(3px * var(--anim-intensity, 0.5))) translateY(calc(-3px * var(--anim-intensity, 0.5)));
+		}
+		75% {
+			transform: translateX(calc(-2px * var(--anim-intensity, 0.5))) translateY(calc(-2px * var(--anim-intensity, 0.5)));
+		}
+		80% {
+			transform: translateX(calc(3px * var(--anim-intensity, 0.5))) translateY(calc(2px * var(--anim-intensity, 0.5)));
+		}
+		85% {
+			transform: translateX(calc(-2px * var(--anim-intensity, 0.5))) translateY(calc(3px * var(--anim-intensity, 0.5)));
+		}
+		90% {
+			transform: translateX(calc(2px * var(--anim-intensity, 0.5))) translateY(calc(-2px * var(--anim-intensity, 0.5)));
+		}
+		95% {
+			transform: translateX(calc(-1px * var(--anim-intensity, 0.5))) translateY(calc(1px * var(--anim-intensity, 0.5)));
+		}
+	}
+
 	:global(.anim-float) {
 		--anim-intensity: 0.5;
 		--anim-duration: 4s;
 		animation: float var(--anim-duration) ease-in-out infinite;
+	}
+
+	:global(.anim-shake) {
+		--anim-intensity: 0.5;
+		--anim-duration: 0.5s;
+		animation: shake var(--anim-duration) ease-in-out infinite;
 	}
 
 	:global(.anim-float:nth-child(2n)) {

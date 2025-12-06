@@ -33,12 +33,14 @@ sounds: [
 ],
 frames: [
 { id: 'tl_1', imageUrl: '/images/manga/pg_2_tl_1.png', imagePosition: { left: 50, top: 5, size: 43 } },
-{ id: 'qd_1', imageUrl: '/images/manga/pg_2_qd_1.png', imagePosition: { left: 25, top: 30, size: 43 } },
-{ id: 'qd_2', imageUrl: '/images/manga/pg_2_qd_2.png', imagePosition: { left: 72, top: 30, size: 50.50 }, sounds: [{ url: '/sounds/atomic-bomb.wav', volume: 0.7 }] },
-{ id: 'qd_3', imageUrl: '/images/manga/pg_2_qd_3.png', imagePosition: { left: 35, top: 59.70, size: 64 } },
-{ id: 'qd_4', imageUrl: '/images/manga/pg_2_qd_4.png', imagePosition: { left: 83, top: 59.80, size: 28 } },
-{ id: 'qd_5', imageUrl: '/images/manga/pg_2_qd_5.png', imagePosition: { left: 34, top: 85, size: 60.70 } },
-{ id: 'qd_6', imageUrl: '/images/manga/pg_2_qd_6.png', imagePosition: { left: 80, top: 85, size: 28 } }
+{ id: 'qd_1', imageUrl: '/images/manga/pg_2_qd_1.png', imagePosition: { left: 25, top: 27.9, size: 43 }},
+{ id: 'qd_2', imageUrl: '/images/manga/pg_2_qd_2.png', imagePosition: { left: 72, top: 28, size: 50.50 }, sounds: [{ url: '/sounds/atomic-bomb.wav', volume: 0.7 }], elements: [
+  { id: 'el_1', imageUrl: '/images/manga/pg_2_qd_2_el1.png', left: 18, top: 5, width: 67, height: 67, animation: { type: 'shake', intensity: 0.4, duration:3.0 } }
+]},
+{ id: 'qd_3', imageUrl: '/images/manga/pg_2_qd_3.png', imagePosition: { left: 35.70, top: 57.10, size: 65.3 } },
+{ id: 'qd_4', imageUrl: '/images/manga/pg_2_qd_4.png', imagePosition: { left: 83, top: 57.10, size: 28 } },
+{ id: 'qd_5', imageUrl: '/images/manga/pg_2_qd_5.png', imagePosition: { left: 35.40, top: 83, size: 65 } },
+{ id: 'qd_6', imageUrl: '/images/manga/pg_2_qd_6.png', imagePosition: { left: 81, top: 83, size: 30 } }
 ] 
 }
 ]

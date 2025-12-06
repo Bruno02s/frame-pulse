@@ -108,6 +108,33 @@ export function previousOrFrame(chapter: MangaChapter | null) {
 // keyed by page index (number), each value is an array with pinned frame indexes in order
 export const pinnedFrames = writable<Record<number, number[]>>({});
 
+// Deriva os índices dos frames restantes (não lidos) da página atual
+// IMPORTANTE: Deve ser declarado DEPOIS de pinnedFrames
+export const remainingFrameIndexes = derived(
+	[currentChapter, currentPageIndex, currentFrameIndex, pinnedFrames],
+	([$currentChapter, $currentPageIndex, $currentFrameIndex, $pinnedFrames]) => {
+		if (!$currentChapter) return [];
+		const page = $currentChapter.pages[$currentPageIndex];
+		if (!page?.frames?.length) return [];
+		
+		const pinned = $pinnedFrames[$currentPageIndex] ?? [];
+		const currentAndPinned = new Set([...pinned, $currentFrameIndex]);
+		
+		// Retorna índices dos frames que NÃO são pinned e NÃO são o atual
+		return page.frames
+			.map((_, idx) => idx)
+			.filter(idx => !currentAndPinned.has(idx));
+	}
+);
+
+// Deriva os índices dos frames já lidos (pinned) da página atual
+export const readFrameIndexes = derived(
+	[currentPageIndex, pinnedFrames],
+	([$currentPageIndex, $pinnedFrames]) => {
+		return $pinnedFrames[$currentPageIndex] ?? [];
+	}
+);
+
 export function pinFrameForPage(pageIndex: number, frameIndex: number) {
 	pinnedFrames.update((map) => {
 		// clone map and array to ensure reactivity

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { pages, navigationDirection, goToPage, currentPageIndex, readingDirection, currentFrameIndex, nextOrFrame, previousOrFrame, currentChapter, pinnedFrames, pinFrameForPage, unpinLastFrameForPage, clearPinnedFramesForPage, toggleReadingDirection } from '$lib/stores/reader';
+	import { pages, navigationDirection, goToPage, currentPageIndex, readingDirection, currentFrameIndex, nextOrFrame, previousOrFrame, currentChapter, pinnedFrames, pinFrameForPage, unpinLastFrameForPage, clearPinnedFramesForPage, toggleReadingDirection, remainingFrameIndexes, readFrameIndexes } from '$lib/stores/reader';
 	import MangaPage from './MangaPage.svelte';
 	import PageNavigator from './PageNavigator.svelte';
 	import { get } from 'svelte/store';
@@ -109,7 +109,11 @@
 		const frameIdx = get(currentFrameIndex);
 		const chapter = get(currentChapter);
 		const page = chapter?.pages?.[pageIdx];
+		
+		console.log('[animateFrameChange]', { direction, pageIdx, frameIdx, rightImg, centerImg, containerEl });
+		
 		if (!page || !page.frames || page.frames.length === 0) {
+			console.log('[animateFrameChange] early return: no frames');
 			isFrameAnimating = false;
 			return;
 		}
@@ -117,32 +121,115 @@
 		if (direction === 'forward') {
 			// Verifica se tem mais frames para avançar
 			if (frameIdx >= page.frames.length - 1) {
+				console.log('[animateFrameChange] early return: no more frames');
 				isFrameAnimating = false;
 				return;
 			}
 			const targetIdx = frameIdx + 1;
 
-			// Cria overlay para transição suave do novo frame
-			const overlay = document.createElement('div');
-			overlay.className = 'fly-overlay';
-			overlay.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:9999; display:flex; align-items:center; justify-content:center;';
+			// Encontra os containers das páginas
+			const rightPageContainer = rightImg?.closest('.page-image') as HTMLElement;
+			const centerPageContainer = centerImg?.closest('.page-image') as HTMLElement;
+			
+			console.log('[animateFrameChange forward] containers:', { rightPageContainer, centerPageContainer, containerEl });
+			
+			if (!rightPageContainer || !centerPageContainer || !containerEl) {
+				console.log('[animateFrameChange forward] early return: missing container');
+				isFrameAnimating = false;
+				return;
+			}
 
 			const frame = page.frames[targetIdx];
+			const hasPosition = frame?.imagePosition?.size;
+
+			// Calcula as posições absolutas
+			const containerRect = containerEl.getBoundingClientRect();
+			const rightRect = rightPageContainer.getBoundingClientRect();
+			const centerRect = centerPageContainer.getBoundingClientRect();
+
+			// Posição inicial (na box da direita)
+			const left = frame?.imagePosition?.left ?? 50;
+			const top = frame?.imagePosition?.top ?? 50;
+			const size = frame?.imagePosition?.size ?? 100;
+
+			// Calcula posição do frame na box da direita (em pixels relativos ao container)
+			const rightFrameX = rightRect.left - containerRect.left + (rightRect.width * left / 100);
+			const rightFrameY = rightRect.top - containerRect.top + (rightRect.height * top / 100);
+			const rightFrameWidth = rightRect.width * size / 100;
+
+			// Calcula posição do frame na box central (destino)
+			const centerFrameX = centerRect.left - containerRect.left + (centerRect.width * left / 100);
+			const centerFrameY = centerRect.top - containerRect.top + (centerRect.height * top / 100);
+			const centerFrameWidth = centerRect.width * size / 100;
+
+			// Cria overlay no container global para poder animar entre as boxes
+			const overlay = document.createElement('div');
+			overlay.className = 'fly-overlay';
+			
+			if (hasPosition) {
+				overlay.style.cssText = `
+					position: absolute;
+					left: ${rightFrameX}px;
+					top: ${rightFrameY}px;
+					transform: translate(-50%, -50%);
+					width: ${rightFrameWidth}px;
+					aspect-ratio: 2 / 3;
+					pointer-events: none;
+					z-index: 9999;
+					overflow: hidden;
+					transition: left 600ms cubic-bezier(0.4, 0, 0.2, 1), top 600ms cubic-bezier(0.4, 0, 0.2, 1), width 600ms cubic-bezier(0.4, 0, 0.2, 1);
+				`;
+			} else {
+				overlay.style.cssText = `
+					position: absolute;
+					left: ${rightRect.left - containerRect.left}px;
+					top: ${rightRect.top - containerRect.top}px;
+					width: ${rightRect.width}px;
+					height: ${rightRect.height}px;
+					pointer-events: none;
+					z-index: 9999;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					transition: left 600ms cubic-bezier(0.4, 0, 0.2, 1), top 600ms cubic-bezier(0.4, 0, 0.2, 1), width 600ms cubic-bezier(0.4, 0, 0.2, 1), height 600ms cubic-bezier(0.4, 0, 0.2, 1);
+				`;
+			}
+
 			const img = new Image();
 			img.src = frame.imageUrl || page.imageUrl || '';
 			img.style.cssText = 'width:100%; height:100%; object-fit:contain; display:block;';
 			overlay.appendChild(img);
-			containerEl?.appendChild(overlay);
+			containerEl.appendChild(overlay);
+
+			// Espera a imagem carregar
 			if (!img.complete) {
 				await new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); });
 			}
-			overlay.style.transition = 'opacity 240ms ease';
-			overlay.style.opacity = '0';
-			requestAnimationFrame(() => (overlay.style.opacity = '1'));
+
+			// Inicia animação para a posição central
+			await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+			
+			if (hasPosition) {
+				overlay.style.left = `${centerFrameX}px`;
+				overlay.style.top = `${centerFrameY}px`;
+				overlay.style.width = `${centerFrameWidth}px`;
+			} else {
+				overlay.style.left = `${centerRect.left - containerRect.left}px`;
+				overlay.style.top = `${centerRect.top - containerRect.top}px`;
+				overlay.style.width = `${centerRect.width}px`;
+				overlay.style.height = `${centerRect.height}px`;
+			}
+
+			// Espera a animação terminar
 			await new Promise<void>((resolve) => {
-				const h = (e: TransitionEvent) => { if (e.target === overlay && e.propertyName === 'opacity' && overlay.style.opacity === '1') { overlay.removeEventListener('transitionend', h as any); resolve(); } };
+				const h = (e: TransitionEvent) => { 
+					if (e.target === overlay && e.propertyName === 'left') { 
+						overlay.removeEventListener('transitionend', h as any); 
+						resolve(); 
+					} 
+				};
 				overlay.addEventListener('transitionend', h as any);
-				setTimeout(resolve, 300);
+				setTimeout(resolve, 700);
 			});
 
 			// PRIMEIRO: pina o frame atual (que vai ficar "por baixo")
@@ -151,15 +238,10 @@
 			currentFrameIndex.set(targetIdx);
 			await tick();
 
-			requestAnimationFrame(() => (overlay.style.opacity = '0'));
-			await new Promise<void>((resolve) => {
-				const h = (e: TransitionEvent) => { if (e.target === overlay && e.propertyName === 'opacity' && overlay.style.opacity === '0') { overlay.removeEventListener('transitionend', h as any); resolve(); } };
-				overlay.addEventListener('transitionend', h as any);
-				setTimeout(resolve, 300);
-			});
+			// Remove o overlay (o frame já está renderizado no centro agora)
 			overlay.remove();
 		} else {
-			// Backward: verifica se tem frames pinados para despinar
+			// Backward: o frame atual voa do centro para a esquerda (box lida)
 			const pinnedMap = get(pinnedFrames);
 			const pinnedForPage = pinnedMap[pageIdx] ?? [];
 			if (pinnedForPage.length === 0) {
@@ -167,44 +249,144 @@
 				return;
 			}
 			
+			// O frame atual vai voar para a esquerda
+			const currentFrame = page.frames[frameIdx];
 			// O último pinned será o novo frame atual
 			const lastPinnedIdx = pinnedForPage[pinnedForPage.length - 1];
 
-			// Cria overlay para transição suave
+			// Encontra os containers das páginas
+			const leftPageContainer = leftImg?.closest('.page-image') as HTMLElement;
+			const centerPageContainer = centerImg?.closest('.page-image') as HTMLElement;
+			
+			console.log('[animateFrameChange backward] containers:', { leftPageContainer, centerPageContainer, containerEl });
+			
+			if (!leftPageContainer || !centerPageContainer || !containerEl) {
+				console.log('[animateFrameChange backward] early return: missing container');
+				// Fallback sem animação
+				unpinLastFrameForPage(pageIdx);
+				currentFrameIndex.set(lastPinnedIdx);
+				await tick();
+				isFrameAnimating = false;
+				return;
+			}
+
+			const hasPosition = currentFrame?.imagePosition?.size;
+
+			// Calcula as posições absolutas
+			const containerRect = containerEl.getBoundingClientRect();
+			const leftRect = leftPageContainer.getBoundingClientRect();
+			const centerRect = centerPageContainer.getBoundingClientRect();
+
+			// Posição do frame
+			const left = currentFrame?.imagePosition?.left ?? 50;
+			const top = currentFrame?.imagePosition?.top ?? 50;
+			const size = currentFrame?.imagePosition?.size ?? 100;
+
+			// Posição inicial (na box central)
+			const centerFrameX = centerRect.left - containerRect.left + (centerRect.width * left / 100);
+			const centerFrameY = centerRect.top - containerRect.top + (centerRect.height * top / 100);
+			const centerFrameWidth = centerRect.width * size / 100;
+
+			// Posição final (na box da esquerda - lida)
+			const leftFrameX = leftRect.left - containerRect.left + (leftRect.width * left / 100);
+			const leftFrameY = leftRect.top - containerRect.top + (leftRect.height * top / 100);
+			const leftFrameWidth = leftRect.width * size / 100;
+
+			console.log('[animateFrameChange backward] positions:', {
+				centerFrameX, centerFrameY, centerFrameWidth,
+				leftFrameX, leftFrameY, leftFrameWidth,
+				hasPosition
+			});
+
+			// Cria overlay no container global
 			const overlay = document.createElement('div');
 			overlay.className = 'fly-overlay';
-			overlay.style.cssText = 'position:absolute; inset:0; pointer-events:none; z-index:9999; display:flex; align-items:center; justify-content:center;';
+			
+			if (hasPosition) {
+				overlay.style.cssText = `
+					position: absolute;
+					left: ${centerFrameX}px;
+					top: ${centerFrameY}px;
+					transform: translate(-50%, -50%);
+					width: ${centerFrameWidth}px;
+					aspect-ratio: 2 / 3;
+					pointer-events: none;
+					z-index: 10000;
+					overflow: hidden;
+					background: white;
+					transition: left 600ms cubic-bezier(0.4, 0, 0.2, 1), top 600ms cubic-bezier(0.4, 0, 0.2, 1), width 600ms cubic-bezier(0.4, 0, 0.2, 1);
+				`;
+			} else {
+				overlay.style.cssText = `
+					position: absolute;
+					left: ${centerRect.left - containerRect.left}px;
+					top: ${centerRect.top - containerRect.top}px;
+					width: ${centerRect.width}px;
+					height: ${centerRect.height}px;
+					pointer-events: none;
+					z-index: 10000;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					background: white;
+					transition: left 600ms cubic-bezier(0.4, 0, 0.2, 1), top 600ms cubic-bezier(0.4, 0, 0.2, 1), width 600ms cubic-bezier(0.4, 0, 0.2, 1), height 600ms cubic-bezier(0.4, 0, 0.2, 1);
+				`;
+			}
 
-			const frame = page.frames[lastPinnedIdx];
 			const img = new Image();
-			img.src = frame?.imageUrl || page.imageUrl || '';
+			img.src = currentFrame?.imageUrl || page.imageUrl || '';
 			img.style.cssText = 'width:100%; height:100%; object-fit:contain; display:block;';
 			overlay.appendChild(img);
-			containerEl?.appendChild(overlay);
+			containerEl.appendChild(overlay);
+
+			// Espera a imagem carregar
 			if (!img.complete) {
 				await new Promise<void>((resolve) => { img.onload = () => resolve(); img.onerror = () => resolve(); });
 			}
-			overlay.style.transition = 'opacity 240ms ease';
-			overlay.style.opacity = '0';
-			requestAnimationFrame(() => (overlay.style.opacity = '1'));
+
+			// Esconder o centro durante a animação
+			if (centerPageContainer) {
+				centerPageContainer.style.visibility = 'hidden';
+			}
+
+			// Inicia animação para a posição da esquerda (lida)
+			await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+			
+			if (hasPosition) {
+				overlay.style.left = `${leftFrameX}px`;
+				overlay.style.top = `${leftFrameY}px`;
+				overlay.style.width = `${leftFrameWidth}px`;
+			} else {
+				overlay.style.left = `${leftRect.left - containerRect.left}px`;
+				overlay.style.top = `${leftRect.top - containerRect.top}px`;
+				overlay.style.width = `${leftRect.width}px`;
+				overlay.style.height = `${leftRect.height}px`;
+			}
+
+			// Espera a animação terminar
 			await new Promise<void>((resolve) => {
-				const h = (e: TransitionEvent) => { if (e.target === overlay && e.propertyName === 'opacity' && overlay.style.opacity === '1') { overlay.removeEventListener('transitionend', h as any); resolve(); } };
+				const h = (e: TransitionEvent) => { 
+					if (e.target === overlay && e.propertyName === 'left') { 
+						overlay.removeEventListener('transitionend', h as any); 
+						resolve(); 
+					} 
+				};
 				overlay.addEventListener('transitionend', h as any);
-				setTimeout(resolve, 300);
+				setTimeout(resolve, 700);
 			});
 
-			// PRIMEIRO: despina o último frame
+			// DEPOIS da animação: despina o último frame e atualiza o índice
 			unpinLastFrameForPage(pageIdx);
-			// DEPOIS: volta para esse frame
 			currentFrameIndex.set(lastPinnedIdx);
+			
+			// Restaurar visibilidade do centro
+			if (centerPageContainer) {
+				centerPageContainer.style.visibility = '';
+			}
+			
 			await tick();
 
-			requestAnimationFrame(() => (overlay.style.opacity = '0'));
-			await new Promise<void>((resolve) => {
-				const h = (e: TransitionEvent) => { if (e.target === overlay && e.propertyName === 'opacity' && overlay.style.opacity === '0') { overlay.removeEventListener('transitionend', h as any); resolve(); } };
-				overlay.addEventListener('transitionend', h as any);
-				setTimeout(resolve, 300);
-			});
+			// Remove o overlay
 			overlay.remove();
 		}
 
@@ -478,8 +660,14 @@
 			<PageNavigator position={'prev'} on:navigate={onNavigate} />
 		</div>
 
-		<!-- Próxima Página (Direita) -->
+		<!-- Próxima Página (Direita) OU Frames Restantes da Página Atual -->
+		{#if $remainingFrameIndexes.length > 0}
+			<!-- Mostra os frames restantes da página atual na box da direita -->
+			<MangaPage page={$pages.current} label="Frames Restantes" position="right" register={registerRight} isAnimating={isPageAnimating} pinnedFrameIndexes={[]} remainingFrameIndexes={$remainingFrameIndexes} showOnlyRemainingFrames={true} />
+		{:else}
+			<!-- Mostra a próxima página quando não há frames restantes -->
 			<MangaPage page={$pages.next} label="Próxima Página" position="right" register={registerRight} isAnimating={isPageAnimating} pinnedFrameIndexes={nextPinned} />
+		{/if}
 	</div>
 </div>
 

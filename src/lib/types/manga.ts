@@ -44,7 +44,7 @@ export interface FrameElement {
 	anchor?: 'center' | 'topleft';
 	// optional animation
 	animation?: {
-		type: 'fade' | 'slide' | 'scale' | 'float';
+		type: 'fade' | 'slide' | 'scale' | 'float' | 'shake';
 		intensity?: number; // 0-1, default 0.5
 		duration?: number;  // seconds, default 4
 	};
